@@ -47,7 +47,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .seg button:last-child{border-right:none}
 .seg button[aria-pressed=true]{background:var(--accent-bg);color:var(--accent);font-weight:600}
 .note{font-size:12.5px;color:var(--text-2);margin:12px 0 0;line-height:1.6}
-.debtgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:6px}
+.debtgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:6px}
 .panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:12px}
 details{background:var(--surface-2);border-radius:12px;padding:4px 18px;margin-bottom:12px}
 summary{font-size:13px;color:var(--text-2);cursor:pointer;padding:12px 0;font-weight:600}
@@ -115,6 +115,7 @@ summary{font-size:13px;color:var(--text-2);cursor:pointer;padding:12px 0;font-we
       <div class="fld"><label>Secured / revolver ($MM)</label><input type="number" id="i_sec" value="0"></div>
       <div class="fld"><label>2nd lien / term loan ($MM)</label><input type="number" id="i_2l" value="0"></div>
       <div class="fld"><label>Unsecured notes ($MM)</label><input type="number" id="i_uns" value="0"></div>
+      <div class="fld"><label>ARO / decommissioning ($MM)</label><input type="number" id="i_aro" value="0"></div>
     </div>
     <p class="note" id="pv_note"></p>
   </div>
@@ -256,6 +257,9 @@ summary{font-size:13px;color:var(--text-2);cursor:pointer;padding:12px 0;font-we
       src:'<a href="https://www.sec.gov/Archives/edgar/data/1658566/000165856626000035/pr-20251231.htm" target="_blank">PR FY2025 10-K</a> — 1,116.3 MMBOE proved (71% PD; oil 479.2 + NGL 295.4 MMbbl, gas 2,050.1 Bcf; pure-play Delaware). Reported pre-tax PV-10 $9,439MM at SEC WTI $66.01 / HH $3.39 (after-tax std measure $8,366MM). Debt YE2025: $3,575MM all senior unsecured notes (8.0%/27 $550, 5.875%/29 $700, 9.875%/31 $325, 7.0%/32 $1,000, 6.25%/33 $1,000); secured RBL undrawn. Liquids blended ~75% of WTI; Waha gas basis ~$1.2.'}
   };
   var ORDER=['gas','oil','chrd','cnx','crc','crgy','crk','gpor','mur','nog','sm','talo','soil','oxy','apa','pr'];
+  /* Total ARO (current + long-term), $MM, from each FY2025 10-K ARO note (SOIL in CAD). */
+  var ARO={gas:149,oil:150,chrd:482,cnx:184,crc:1033,crgy:403,crk:21,gpor:33,
+    mur:1013,nog:54,sm:157,talo:1332,soil:203,oxy:4553,apa:2880,pr:189};
 
   var usd=function(n){return (n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString()};
   var bil=function(n){return (n<0?'-$':'$')+(Math.abs(n)/1000).toFixed(1)+'B'};
@@ -306,7 +310,7 @@ summary{font-size:13px;color:var(--text-2);cursor:pointer;padding:12px 0;font-we
     $('i_plat').value=p.plat; $('i_decl').value=p.decl; $('i_hz').value=p.hz;
     $('i_tax').value=p.tax; $('i_devc').value=p.devc; $('i_devy').value=p.devy;
     $('i_liq').value=p.liq; $('i_basis').value=p.basis; $('i_ltoil').value=p.ltoil; $('i_ltgas').value=p.ltgas; $('i_glide').value=p.glide;
-    $('i_sec').value=p.sec; $('i_2l').value=p.l2; $('i_uns').value=p.uns;
+    $('i_sec').value=p.sec; $('i_2l').value=p.l2; $('i_uns').value=p.uns; $('i_aro').value=ARO[co]||0;
     var target=p.hist[p.hist.length-1];
     $('c_last').textContent=usd(target);
     $('c_lastsub').textContent='YE2025 reported ('+p.secPrices+')';
@@ -323,15 +327,15 @@ summary{font-size:13px;color:var(--text-2);cursor:pointer;padding:12px 0;font-we
   function model(){
     var P=readParams();
     var r=dcf(P);
-    r.sec=v('i_sec'); r.l2=v('i_2l'); r.uns=v('i_uns'); r.ltoil=P.ltoil; r.ltgas=P.ltgas; r.oil=P.oil; r.gas=P.gas;
+    r.sec=v('i_sec'); r.l2=v('i_2l'); r.uns=v('i_uns'); r.aro=v('i_aro'); r.ltoil=P.ltoil; r.ltgas=P.ltgas; r.oil=P.oil; r.gas=P.gas;
     r.p=PRE[co];
     return r;
   }
 
   var walk,wf;
   function drawWalk(m){
-    var debt=basis==='sec'?m.sec:basis==='2l'?(m.sec+m.l2):(m.sec+m.l2+m.uns);
-    var dlabel=basis==='sec'?'Secured':basis==='2l'?'Secured + 2L':'Total debt';
+    var debt=basis==='sec'?m.sec:basis==='2l'?(m.sec+m.l2):basis==='uns'?(m.sec+m.l2+m.aro+m.uns):(m.sec+m.l2+m.uns+m.aro);
+    var dlabel=basis==='sec'?'Secured':basis==='2l'?'Secured + 2L':basis==='uns'?'Debt + ARO':'Total (debt + ARO)';
     var labels=m.p.years.concat(['26E']);
     var data=m.p.hist.concat([m.PV]);
     var cols=m.p.hist.map(function(){return css('--bluelt')}); cols.push(css('--blue'));
@@ -361,15 +365,15 @@ summary{font-size:13px;color:var(--text-2);cursor:pointer;padding:12px 0;font-we
   }
 
   function recover(m){
-    var sec=m.sec,l2=m.l2,uns=m.uns,tot=sec+l2+uns,cov,sub,lab,note;
+    var sec=m.sec,l2=m.l2,uns=m.uns,aro=m.aro,tot=sec+l2+uns+aro,cov,sub,lab,note;
     if(basis==='sec'){cov=sec>0?m.PV/sec:Infinity;lab='PV-10 / secured';sub='1st-lien coverage';
       note='Secured = PV-10 ('+usd(m.PV)+'MM) ÷ secured / revolver ('+usd(sec)+'MM). Above 1.0x the reserve value covers the first-lien claim before any haircut.';}
     else if(basis==='2l'){var r2=m.PV-sec;cov=l2>0?r2/l2:Infinity;lab='Residual / 2nd lien';sub='value after secured';
       note='2nd lien = (PV-10 − secured) ÷ 2nd lien = ('+usd(m.PV)+' − '+usd(sec)+') ÷ '+usd(l2)+'MM.'+(l2===0?' No 2nd-lien debt in this structure.':'');}
-    else if(basis==='uns'){var ru=m.PV-sec-l2;cov=uns>0?ru/uns:Infinity;lab='Residual / unsecured';sub='after secured + 2L';
-      note='Unsecured = (PV-10 − secured − 2nd lien) ÷ unsecured = ('+usd(m.PV)+' − '+usd(sec+l2)+') ÷ '+usd(uns)+'MM. The residual reserve value attributable to senior unsecured after the lien tranches.';}
-    else {cov=tot>0?m.PV/tot:Infinity;lab='PV-10 / total debt';sub='blended cushion';
-      note='Total = PV-10 ('+usd(m.PV)+'MM) ÷ total debt ('+usd(tot)+'MM). A blended asset-value cushion across the whole capital structure.';}
+    else if(basis==='uns'){var ru=m.PV-sec-l2-aro;cov=uns>0?ru/uns:Infinity;lab='Residual / unsecured';sub='after secured + 2L + ARO';
+      note='Unsecured = (PV-10 − secured − 2nd lien − ARO) ÷ unsecured = ('+usd(m.PV)+' − '+usd(sec+l2+aro)+') ÷ '+usd(uns)+'MM. ARO of '+usd(aro)+'MM is treated as senior to unsecured (decommissioning / plugging is a priority obligation, material offshore — e.g. TALO, MUR).';}
+    else {cov=tot>0?m.PV/tot:Infinity;lab='PV-10 / total stack';sub='incl. ARO in total';
+      note='Total = PV-10 ('+usd(m.PV)+'MM) ÷ total claims ('+usd(tot)+'MM = secured '+usd(sec)+' + 2nd lien '+usd(l2)+' + unsecured '+usd(uns)+' + ARO '+usd(aro)+'). ARO is included in the total debt stack.';}
     $('c_dlab').textContent=lab;
     $('c_cov').textContent=cov===Infinity?'n/a':(Math.round(cov*100)/100).toFixed(2)+'x';
     $('c_cov').style.color=cov>=1?'var(--good)':'var(--bad)';
