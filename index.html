@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E&P PV-10 sensitivity &amp; recovery model</title>
+<style>
+:root{
+  --bg:#f7f7f5; --surface:#ffffff; --surface-2:#f1efe8; --border:#e3e1d8; --border-strong:#cfcdc2;
+  --text:#1a1a18; --text-2:#5f5e5a; --text-3:#8a8881;
+  --accent:#185fa5; --accent-bg:#e6f1fb; --good:#1d7a55; --bad:#b23b3a; --warn:#b07a14;
+  --blue:#2a78d6; --bluelt:#b5d4f4; --green:#1baf7a; --red:#e34948; --amber:#eda100; --gray:#888780;
+  --radius:8px; --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#1a1a19; --surface:#242422; --surface-2:#2c2c2a; --border:#383835; --border-strong:#4a4a46;
+  --text:#f3f2ec; --text-2:#bdbcb3; --text-3:#8a8881; --accent:#5fa3e8; --accent-bg:#15324d;
+  --good:#4cc491; --bad:#e87170; --warn:#e0b052;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto;padding:28px 20px 64px}
+h1{font-size:24px;font-weight:600;margin:0 0 4px}
+.sub{font-size:14px;color:var(--text-2);margin:0 0 22px}
+.cap{font-size:12px;color:var(--text-3);margin:6px 0 4px;line-height:1.5}
+.grp{background:var(--surface-2);border-radius:12px;padding:16px 18px;margin-bottom:16px}
+.grp-h{font-size:13px;color:var(--text-2);margin:0 0 12px;font-weight:600}
+label{font-size:12px;color:var(--text-3);display:block;margin-bottom:4px}
+select,input[type=number]{font-family:var(--font);font-size:14px;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);padding:8px 10px;width:100%;height:38px}
+select:focus,input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.fld{display:flex;flex-direction:column}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px}
+.sl{display:grid;grid-template-columns:120px 1fr 120px;align-items:center;gap:12px;margin-bottom:12px}
+.sl .nm{font-size:13px;color:var(--text-2)}
+.sl .ro{font-size:15px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.sl .ro small{display:block;font-size:11px;font-weight:400;color:var(--text-3)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin:18px 0 8px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.card .lab{font-size:12px;color:var(--text-2);margin:0 0 6px}
+.card .val{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;margin:0}
+.card .vsub{font-size:12px;margin:5px 0 0;color:var(--text-3)}
+.chart-h{font-size:14px;font-weight:600;margin:18px 0 8px}
+.chart-box{position:relative;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}
+.seg{display:flex;border:1px solid var(--border-strong);border-radius:var(--radius);overflow:hidden;margin-bottom:8px}
+.seg button{flex:1;border:none;background:var(--surface);padding:10px 6px;font-size:13px;cursor:pointer;color:var(--text-2);border-right:1px solid var(--border);font-family:var(--font)}
+.seg button:last-child{border-right:none}
+.seg button[aria-pressed=true]{background:var(--accent-bg);color:var(--accent);font-weight:600}
+.note{font-size:12.5px;color:var(--text-2);margin:12px 0 0;line-height:1.6}
+.debtgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:6px}
+.panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:12px}
+details{background:var(--surface-2);border-radius:12px;padding:4px 18px;margin-bottom:12px}
+summary{font-size:13px;color:var(--text-2);cursor:pointer;padding:12px 0;font-weight:600}
+.foot{font-size:12px;color:var(--text-3);margin-top:28px;border-top:1px solid var(--border);padding-top:14px;line-height:1.6}
+.foot a{color:var(--accent)}
+@media(max-width:640px){.controls{grid-template-columns:1fr}.sl{grid-template-columns:90px 1fr 100px}.debtgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>E&amp;P PV-10 sensitivity &amp; recovery model</h1>
+  <p class="sub">Reprice proved-reserve value under SEC or strip price decks, build PV-10 from its components, walk it through history, and test recovery across the capital structure. All figures run off fiscal-year 2025 reserve reports.</p>
+
+  <div class="controls">
+    <div class="fld">
+      <label for="co">Company</label>
+      <select id="co"></select>
+    </div>
+    <div class="fld">
+      <label for="dk">Price deck</label>
+      <select id="dk">
+        <option value="sec">SEC — flat benchmark (held all years)</option>
+        <option value="str">Strip — front month glides to long-term</option>
+      </select>
+    </div>
+  </div>
+  <p class="cap" id="datacap"></p>
+  <p class="cap" id="calnote"></p>
+
+  <div class="grp">
+    <p class="grp-h" id="deck_lbl">Price assumptions</p>
+    <div class="sl">
+      <span class="nm">Oil / WTI</span>
+      <input type="range" id="s_oil" min="20" max="140" step="0.01" value="65.68">
+      <span class="ro"><span id="o_oil">$66</span><small id="o_oild">flat</small></span>
+    </div>
+    <div class="sl">
+      <span class="nm">Gas / Henry Hub</span>
+      <input type="range" id="s_gas" min="0.5" max="10" step="0.01" value="3.39">
+      <span class="ro"><span id="o_gas">$3.39</span><small id="o_gasd">flat</small></span>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><p class="lab">Reported PV-10 (YE2025)</p><p class="val" id="c_last">$0</p><p class="vsub" id="c_lastsub"></p></div>
+    <div class="card"><p class="lab">Forecast PV-10</p><p class="val" id="c_new" style="color:var(--accent)">$0</p><p class="vsub" id="c_chg"></p></div>
+    <div class="card"><p class="lab" id="c_dlab">PV-10 / total debt</p><p class="val" id="c_cov">0x</p><p class="vsub" id="c_covsub"></p></div>
+  </div>
+
+  <p class="chart-h">PV-10 walk — reported history into forecast</p>
+  <div class="chart-box" style="height:240px"><canvas id="walk_chart"></canvas></div>
+
+  <p class="chart-h">Component build — how the forecast PV-10 is assembled</p>
+  <div class="chart-box" style="height:260px"><canvas id="wf_chart"></canvas></div>
+
+  <div class="grp" style="margin-top:18px">
+    <p class="grp-h">Recovery basis — PV-10 against the capital structure</p>
+    <div class="seg" role="group" aria-label="Debt basis">
+      <button id="b_sec" aria-pressed="false">Secured</button>
+      <button id="b_2l" aria-pressed="false">2nd lien</button>
+      <button id="b_uns" aria-pressed="false">Unsecured</button>
+      <button id="b_tot" aria-pressed="true">Total</button>
+    </div>
+    <div class="debtgrid">
+      <div class="fld"><label>Secured / revolver ($MM)</label><input type="number" id="i_sec" value="0"></div>
+      <div class="fld"><label>2nd lien / term loan ($MM)</label><input type="number" id="i_2l" value="0"></div>
+      <div class="fld"><label>Unsecured notes ($MM)</label><input type="number" id="i_uns" value="0"></div>
+    </div>
+    <p class="note" id="pv_note"></p>
+  </div>
+
+  <details>
+    <summary>Reserves, production schedule &amp; costs</summary>
+    <div class="panel">
+      <div class="fld"><label>Liquids reserves (MMbbl)</label><input type="number" id="i_oilr" value="0"></div>
+      <div class="fld"><label>Gas reserves (Bcf)</label><input type="number" id="i_gasr" value="0"></div>
+      <div class="fld"><label>Yr-1 liquids (MMbbl/yr)</label><input type="number" id="i_y1o" value="0"></div>
+      <div class="fld"><label>Yr-1 gas (Bcf/yr)</label><input type="number" id="i_y1g" value="0"></div>
+      <div class="fld"><label>Plateau years</label><input type="number" id="i_plat" value="2"></div>
+      <div class="fld"><label>Annual decline (%)</label><input type="number" id="i_decl" value="10"></div>
+      <div class="fld"><label>Forecast horizon (yrs)</label><input type="number" id="i_hz" value="30"></div>
+      <div class="fld"><label>Implied cash cost ($/boe)</label><input type="number" id="i_opex" value="6" step="0.1"></div>
+      <div class="fld"><label>Prod / ad-val tax (%)</label><input type="number" id="i_tax" value="5" step="0.5"></div>
+      <div class="fld"><label>Yr-1 dev capex ($MM)</label><input type="number" id="i_devc" value="0"></div>
+      <div class="fld"><label>Dev capex years</label><input type="number" id="i_devy" value="5"></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Realizations &amp; strip curve</summary>
+    <div class="panel">
+      <div class="fld"><label>Liquids realization (% of WTI)</label><input type="number" id="i_liq" value="80"></div>
+      <div class="fld"><label>Gas basis differential ($/mcf)</label><input type="number" id="i_basis" value="0.50" step="0.05"></div>
+      <div class="fld"><label>Long-term oil — strip ($/bbl)</label><input type="number" id="i_ltoil" value="62"></div>
+      <div class="fld"><label>Long-term gas — strip ($/mcf)</label><input type="number" id="i_ltgas" value="3.75" step="0.05"></div>
+      <div class="fld"><label>Strip glide (yrs to LT)</label><input type="number" id="i_glide" value="3"></div>
+    </div>
+  </details>
+
+  <p class="foot" id="srcfoot"></p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var v=function(id){return +$(id).value||0};
+  var deck='sec', basis='tot', co='gas';
+
+  var PRE={
+    gas:{name:'RRC',label:'Range Resources (RRC) — Appalachia gas',years:['YE23','YE24','YE25'],hist:[7926,5454,11566],
+      secPrices:'HH $3.39 / WTI $65.68',
+      oil:65.68,gas:3.39,oilr:1071,gasr:11715.9,y1o:42.53,y1g:560.9,plat:2,decl:8,hz:40,
+      tax:1,devc:600,devy:5,liq:39.5,basis:0.36,ltoil:65,ltgas:3.75,glide:3,
+      sec:118,l2:0,uns:1100,
+      src:'<a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000315852&type=10-K" target="_blank">RRC FY2025 10-K</a> — 18.1 Tcfe proved (71% PD; gas 11,715.9 Bcf, NGL 1,038.2 + oil 32.8 MMbbl). Reported PV-10 $11,566MM at SEC HH $3.39 / WTI $65.68. Debt YE2025: $118MM secured revolver + $1,100MM unsecured notes (8.25%/29 $600MM, 4.75%/30 $500MM). NOTE: the $600MM 8.25%/29 notes were redeemed Jan 15 2026 via the revolver — post-YE2025, so not reflected; that shift moves ~$600MM from unsecured to secured. Liquids = oil + NGL (reserve-weighted ~39.5% of WTI).'},
+    oil:{name:'MTDR',label:'Matador Resources (MTDR) — Delaware oil',years:['YE23','YE24','YE25'],hist:[7704,9234,8238],
+      secPrices:'WTI $61.82 / HH $3.39',
+      oil:61.82,gas:3.39,oilr:376.0,gasr:1746.4,y1o:43.70,y1g:191.3,plat:5,decl:15,hz:25,
+      tax:8.5,devc:1300,devy:5,liq:100,basis:1.31,ltoil:60,ltgas:3.50,glide:3,
+      sec:398,l2:0,uns:2150,
+      src:'<a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001520006&type=10-K" target="_blank">MTDR FY2025 10-K</a> — 667.0 MMBOE proved (61% PD, 56% oil; oil 376.0 MMbbl, gas 1,746.4 Bcf). Reported PV-10 $8,237.8MM at SEC WTI $61.82 / HH $3.39. Debt YE2025: $398MM secured RBL + $2,150MM unsecured notes (6.875%/28, 6.50%/32, 6.25%/33). San Mateo $883MM is non-recourse and excluded. Two-stream reporting folds NGLs into gas; liquids = oil (~100% of WTI), Waha gas basis ~$1.31/mcf.'},
+    chrd:{name:'CHRD',label:'Chord Energy (CHRD) — Bakken oil',years:['YE23','YE24','YE25'],hist:[8529,10263,9072],
+      secPrices:'WTI $65.34 / HH $3.39',
+      oil:65.34,gas:3.39,oilr:688.8,gasr:1372.1,y1o:75.65,y1g:151.9,plat:3,decl:18,hz:25,
+      tax:8,devc:1000,devy:5,liq:75,basis:1.99,ltoil:62,ltgas:3.50,glide:3,
+      sec:0,l2:0,uns:1500,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/1486159/000148615926000005/chrd-20251231.htm" target="_blank">CHRD FY2025 10-K</a> — 917.5 MMBOE proved (56% oil, 69% PD; oil 514.7 + NGL 174.1 MMbbl, gas 1,372.1 Bcf). Reported PV-10 $9,072.4MM at SEC WTI $65.34 / HH $3.39. Debt YE2025: revolver undrawn + $1,500MM unsecured notes (6.0%/30 $750, 6.75%/33 $750). Liquids = oil + NGL (blended ~75% of WTI; Bakken NGL realizes very low at ~$7/bbl). Engineer NSAI.'},
+    cnx:{name:'CNX',label:'CNX Resources (CNX) — Appalachia gas',years:['YE23','YE24','YE25'],hist:[4201,3827,6830],
+      secPrices:'HH $3.39 (gas-only; no WTI disclosed)',
+      oil:65.34,gas:3.387,oilr:168.8,gasr:8649.4,y1o:8.06,y1g:580.6,plat:2,decl:9,hz:40,
+      tax:4,devc:500,devy:6,liq:31,basis:0.41,ltoil:62,ltgas:3.50,glide:3,
+      sec:200,l2:0,uns:1809,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/1070412/000107041226000038/cnx-20251231.htm" target="_blank">CNX FY2025 10-K</a> — 9,662 Bcfe proved (72% PD; gas 8,649.4 Bcf, NGL 168.1 + oil 0.7 MMbbl). Reported PV-10 $6,830MM at SEC HH $3.387; CNX is a gas producer and discloses no WTI benchmark, so the oil slider has minor effect (liquids are NGL-heavy, modeled ~31% of WTI). Debt YE2025, CNX-recourse: $200MM secured revolver + ~$1,809MM unsecured notes (7.25%/32 $600, 6.0%/29 $500, 7.375%/31 $500, 2.25% conv/26 $208.6). CNX Midstream (CNXM) $400MM notes + revolver are non-recourse and excluded. Engineer NSAI.'},
+    crc:{name:'CRC',label:'California Resources (CRC) — California oil',years:['YE25'],hist:[8717],
+      secPrices:'Brent $69.38 / WTI $65.34 / HH $3.39',
+      oil:65.34,gas:3.39,oilr:578,gasr:455,y1o:43.4,y1g:41.6,plat:3,decl:7,hz:30,
+      tax:5,devc:400,devy:5,liq:100,basis:-0.18,ltoil:62,ltgas:3.50,glide:3,
+      sec:0,l2:0,uns:1300,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/1609253/000160925326000051/crc-20251231.htm" target="_blank">CRC FY2025 10-K</a> — 654 MMBOE proved (79% oil, ~83% PD; oil 541 + NGL 37 MMbbl, gas 455 Bcf; incl Berry merger closed 12/18/2025). Reported PV-10 $8,717MM at YE2025 (oil Brent-linked ~$69.38, gas $3.39). Prior-year PV-10 not disclosed as a line item, so only YE2025 is shown. Debt YE2025: revolver undrawn + $1,300MM unsecured notes (8.25%/29 $900, 7.0%/34 $400). CA crude realizes near/above WTI; CA gas trades at a premium (negative basis). High implied cash cost reflects thermal/EOR operations. Engineers NSAI / D&M.'},
+    crgy:{name:'CRGY',label:'Crescent Energy (CRGY) — diversified',years:['YE24','YE25'],hist:[6459,8633],
+      secPrices:'WTI $65.34 / HH $3.39',
+      oil:65.34,gas:3.39,oilr:595.8,gasr:2278.1,y1o:55.52,y1g:237.0,plat:3,decl:16,hz:25,
+      tax:7,devc:900,devy:5,liq:76,basis:0.55,ltoil:62,ltgas:3.50,glide:3,
+      sec:772,l2:0,uns:4801,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/1866175/000186617526000026/crgy-20251231.htm" target="_blank">CRGY FY2025 10-K</a> — 975.5 MMBOE proved (~61% liquids, ~80% PD; oil 359.7 + NGL 236.1 MMbbl, gas 2,278.1 Bcf). Reported PV-10 $8,633MM at SEC WTI $65.34 / HH $3.39; YE2023 PV-10 not in the table. Debt YE2025: $772MM secured revolver + $4,800.6MM unsecured notes (7 series via Crescent Energy Finance LLC). Post-YE Crescent minerals facility ($365MM, 2/23/2026) is a subsequent event and excluded. Engineer Ryder Scott.'},
+    crk:{name:'CRK',label:'Comstock Resources (CRK) — Haynesville gas',years:['YE25'],hist:[4463],
+      secPrices:'HH $3.39 (adjusted $3.07)',
+      oil:65.34,gas:3.39,oilr:0.2,gasr:7004.1,y1o:0.2,y1g:450.2,plat:5,decl:12,hz:35,
+      tax:6,devc:800,devy:6,liq:30,basis:0.32,ltoil:62,ltgas:3.50,glide:3,
+      sec:260,l2:0,uns:2589,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/23194/000119312526059001/crk-20251231.htm" target="_blank">CRK FY2025 10-K</a> — 7,005 Bcfe proved (41% PD — heavy PUD weighting; NGLs bundled into gas, oil negligible). Reported PV-10 $4,463MM (YE2025 only; prior-year PV-10 not disclosed). CRK quotes only quality-adjusted SEC prices ($3.07/mcf gas), not raw NYMEX; modeled at HH $3.39, basis $0.32. Debt YE2025: $260MM secured revolver + $2,589MM unsecured notes (6.75%/29 $1,624, 5.875%/30 $965). Pinnacle JV is redeemable preferred (not debt). Longer plateau reflects PUD development.'},
+    gpor:{name:'GPOR',label:'Gulfport Energy (GPOR) — Utica/SCOOP gas',years:['YE25'],hist:[3622],
+      secPrices:'WTI $66.01 / HH $3.39',
+      oil:66.01,gas:3.39,oilr:107,gasr:3612,y1o:6.81,y1g:338.3,plat:2,decl:12,hz:35,
+      tax:5,devc:400,devy:5,liq:59,basis:0.27,ltoil:62,ltgas:3.50,glide:3,
+      sec:147,l2:0,uns:650,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/874499/000162828026011487/gpor-20251231.htm" target="_blank">GPOR FY2025 10-K</a> — 4,253 Bcfe proved (~57% PD; gas 3,612 Bcf, NGL 83 + oil 24 MMbbl). Reported PV-10 $3,622MM at SEC WTI $66.01 / HH $3.39 (prior-year PV-10 not disclosed). Debt YE2025: $147MM secured RBL + $650MM unsecured notes (6.75%/29). Liquids blended ~59% of WTI.'},
+    mur:{name:'MUR',label:'Murphy Oil (MUR) — diversified oil [std measure]',years:['YE23','YE24','YE25'],hist:[6853,5396,4624],
+      secPrices:'WTI $65.34 / HH $3.39',
+      oil:65.34,gas:3.39,oilr:305.4,gasr:2547.7,y1o:37.95,y1g:185.4,plat:4,decl:16,hz:25,
+      tax:5,devc:700,devy:5,liq:92,basis:0.50,ltoil:62,ltgas:3.50,glide:3,
+      sec:0,l2:0,uns:1385,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/717423/000162828026011709/mur-20251231.htm" target="_blank">MUR FY2025 10-K</a>. WARNING: Murphy discloses NO pre-tax PV-10 — this is anchored to the AFTER-TAX standardized measure ($4,624MM YE2025), which is conservative (true PV-10 would be higher), so recovery here is understated vs the other names. 730.0 MMBOE proved (57% PD; oil 268.7 + NGL 36.7 MMbbl, gas 2,547.7 Bcf; incl Gulf of America NCI). SEC WTI $65.34 / HH $3.39. Debt YE2025: ALL senior UNSECURED — $1,385MM ($1,285MM notes + $100MM unsecured RCF draw); no secured RBL (so the Secured tab shows n/a), no non-recourse. Subsequent (Jan 2026): $500MM 2034 notes issued / RCF upsized — excluded.'},
+    nog:{name:'NOG',label:'Northern Oil & Gas (NOG) — non-op oil',years:['YE25'],hist:[4531],
+      secPrices:'WTI $65.34 / HH $3.39',
+      oil:65.34,gas:3.39,oilr:184.9,gasr:1195.2,y1o:27.6,y1g:130.1,plat:2,decl:20,hz:22,
+      tax:8,devc:600,devy:4,liq:91,basis:0.71,ltoil:62,ltgas:3.50,glide:3,
+      sec:478,l2:0,uns:1945,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/1104485/000110448526000008/nog-20251231.htm" target="_blank">NOG FY2025 10-K</a> — 384.1 MMBOE proved (74% PD; oil 184.9 MMbbl, gas+NGL 1,195.2 Bcf — NGLs bundled into gas). Reported pre-tax PV-10 $4,531MM at SEC WTI $65.34 / HH $3.39 (prior-year PV-10 not disclosed). Debt YE2025: $478MM secured RBL + $1,945MM unsecured/convertible notes (8.125%/28 $20, 3.625% conv/29 $700, 8.75%/31 $500, 7.875%/33 $725). Oil diff ~$5.53/bbl; gas ~79% of HH.'},
+    sm:{name:'SM',label:'SM Energy (SM) — Midland / South TX / Uinta',years:['YE23','YE24','YE25'],hist:[7377,8356,6847],
+      secPrices:'WTI $65.34 / HH $3.39',
+      oil:65.34,gas:3.39,oilr:406.5,gasr:1598.5,y1o:50.4,y1g:150.5,plat:4,decl:16,hz:25,
+      tax:7,devc:900,devy:5,liq:84,basis:0.50,ltoil:62,ltgas:3.50,glide:3,
+      sec:0,l2:0,uns:2736,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/893538/000089353826000032/sm-20251231.htm" target="_blank">SM FY2025 10-K</a> — 673.0 MMBOE proved (61% PD, 42% oil; oil 283.9 + NGL 122.6 MMbbl, gas 1,598.5 Bcf). Reported PV-10 $6,847MM at SEC WTI $65.34 / HH $3.39. Debt YE2025: revolver undrawn (secured RBL, $0) + $2,736MM senior unsecured notes. WARNING: Civitas merger closed 1/30/2026 (post-YE), adding ~$4.9B notes — NOT reflected. Liquids blended ~84% of WTI.'},
+    talo:{name:'TALO',label:'Talos Energy (TALO) — offshore GoM oil',years:['YE23','YE24','YE25'],hist:[3499,4201,3189],
+      secPrices:'WTI $65.37 / HH $3.39',
+      oil:65.37,gas:3.39,oilr:142.26,gasr:194.6,y1o:26.83,y1g:46.1,plat:2,decl:20,hz:18,
+      tax:2,devc:500,devy:4,liq:94,basis:0,ltoil:62,ltgas:3.50,glide:3,
+      sec:0,l2:0,uns:1250,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/1724965/000119312526067807/talo-20251231.htm" target="_blank">TALO FY2025 10-K</a> — 174.7 MMBOE proved (78% PD, 75% oil; oil 130.6 + NGL 11.6 MMbbl, gas 194.6 Bcf; all US offshore). Reported PV-10 $3,189MM at SEC WTI $65.37 / HH $3.39. Debt YE2025: bank facility undrawn (so Secured tab shows n/a) + $1,250MM senior unsecured notes (9.0% + 9.375%). WARNING: large offshore decommissioning ARO of $1,332MM effectively ranks ahead of the reserve value — weigh it alongside recovery. Offshore oil realizes near WTI.'},
+    soil:{name:'SOIL',label:'Saturn Oil & Gas (SOIL) — Canada [CAD / NI 51-101]',years:['YE25'],hist:[2188],
+      secPrices:'forecast deck, CAD',
+      oil:65.34,gas:3.39,oilr:106.5,gasr:150.6,y1o:12.46,y1g:16.6,plat:3,decl:18,hz:20,
+      tax:5,devc:300,devy:4,liq:100,basis:1.0,ltoil:62,ltgas:3.50,glide:3,
+      sec:761,l2:0,uns:0,
+      src:'WARNING — CANADIAN metric, NOT SEC PV-10, all figures in CAD. Saturn FY2025 NI 51-101 reserves (Ryder Scott, effective 12/31/2025). Anchor = Total Proved (1P) BEFORE-TAX NPV10 of CAD $2,187.9MM, struck on a FORECAST price deck (GLJ/McDaniel/Sproule average — not SEC flat pricing) and net of abandonment. Reserves (net): 131.6 MMBOE (liquids 106.5 MMbbl, gas 150.6 Bcf; ~66% PDP). Liquids realization bakes in CAD/FX uplift so the USD price slider is a rough proxy only. Debt: net debt CAD $761.5MM placed as secured (Saturn debt is a senior secured term loan); gross secured/unsecured split not in the release — refine from the SEDAR+ AIF. Release price-deck footnote ("Jan 1 2025") looks like a typo for Jan 1 2026 — verify in the AIF. Source: <a href="https://saturnoil.com" target="_blank">company release</a> / SEDAR+ AIF.'},
+    oxy:{name:'OXY',label:'Occidental Petroleum (OXY) — diversified [std measure]',years:['YE23','YE24','YE25'],hist:[40302,42871,36627],
+      secPrices:'WTI $65.34 / HH $3.39',
+      oil:65.34,gas:3.39,oilr:3312,gasr:7745,y1o:385,y1g:829,plat:5,decl:12,hz:25,
+      tax:8,devc:5000,devy:5,liq:80,basis:0.50,ltoil:62,ltgas:3.50,glide:3,
+      sec:0,l2:0,uns:20427,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/797468/000162828026009059/oxy-20251231.htm" target="_blank">OXY FY2025 10-K</a>. WARNING: OXY discloses NO pre-tax PV-10 — anchored to the AFTER-TAX standardized measure ($36,627MM YE2025; oil&gas segment, worldwide continuing ops), so recovery is understated vs pre-tax names. 4,603 MMBOE proved (72% PD; oil 2,162 + NGL 1,150 MMbbl, gas 7,745 Bcf; US+Intl). SEC WTI $65.34 / HH $3.39. Debt YE2025: ~$20,427MM face, essentially all senior unsecured (revolver $0; $1,280MM unsecured term loan due 2026). PLUS ~$8.49B Berkshire 8% preferred (ranks below debt, above common) — NOT in the debt fields; weigh separately. OxyChem sold to Berkshire $9.7B (closed Jan 2 2026, post-YE) cut debt to ~$15B by the filing date.'},
+    apa:{name:'APA',label:'APA Corp (APA) — international diversified',years:['YE23','YE24','YE25'],hist:[13600,14400,12600],
+      secPrices:'WTI/HH not disclosed (proxy $65.34/$3.39)',
+      oil:65.34,gas:3.39,oilr:749,gasr:1845,y1o:115,y1g:327,plat:4,decl:14,hz:22,
+      tax:10,devc:2500,devy:5,liq:86,basis:1.03,ltoil:62,ltgas:3.50,glide:3,
+      sec:0,l2:0,uns:4493,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/1841666/000184166626000015/apa-20251231.htm" target="_blank">APA FY2025 10-K</a> — 1,056 MMBOE proved (~70% PD; oil 509 + NGL 240 MMbbl, gas ~1,845 Bcf; US / Egypt / North Sea / Suriname, gross of the Egypt 1/3 NCI). APA does not label a PV-10 but discloses a pre-tax discounted figure of ~$12,600MM YE2025 (the PV-10 equivalent), used as the anchor; after-tax std measure $10,838MM. WARNING: APA does NOT print SEC benchmark prices — the slider defaults to the 2025 SEC averages (WTI ~$65.34 / HH $3.39) as a proxy. Debt YE2025: $4,493MM, all senior unsecured (revolver $0, term loan $0). ~$1.0B of value is attributable to the Egypt NCI.'},
+    pr:{name:'PR',label:'Permian Resources (PR) — Delaware oil',years:['YE23','YE24','YE25'],hist:[11108,10830,9439],
+      secPrices:'WTI $66.01 / HH $3.39',
+      oil:66.01,gas:3.39,oilr:774.6,gasr:2050.1,y1o:102.1,y1g:247.0,plat:4,decl:16,hz:25,
+      tax:7,devc:2200,devy:5,liq:75,basis:1.2,ltoil:62,ltgas:3.50,glide:3,
+      sec:0,l2:0,uns:3575,
+      src:'<a href="https://www.sec.gov/Archives/edgar/data/1658566/000165856626000035/pr-20251231.htm" target="_blank">PR FY2025 10-K</a> — 1,116.3 MMBOE proved (71% PD; oil 479.2 + NGL 295.4 MMbbl, gas 2,050.1 Bcf; pure-play Delaware). Reported pre-tax PV-10 $9,439MM at SEC WTI $66.01 / HH $3.39 (after-tax std measure $8,366MM). Debt YE2025: $3,575MM all senior unsecured notes (8.0%/27 $550, 5.875%/29 $700, 9.875%/31 $325, 7.0%/32 $1,000, 6.25%/33 $1,000); secured RBL undrawn. Liquids blended ~75% of WTI; Waha gas basis ~$1.2.'}
+  };
+  var ORDER=['gas','oil','chrd','cnx','crc','crgy','crk','gpor','mur','nog','sm','talo','soil','oxy','apa','pr'];
+
+  var usd=function(n){return (n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString()};
+  var bil=function(n){return (n<0?'-$':'$')+(Math.abs(n)/1000).toFixed(1)+'B'};
+  var px=function(n){return '$'+(Math.round(n*100)/100).toFixed(n<10?2:0)};
+  function css(x){return getComputedStyle(document.documentElement).getPropertyValue(x).trim()}
+
+  function dcf(P){
+    var cumO=0,cumG=0,R=0,PC=0,TX=0,DV=0,PV=0;
+    for(var t=1;t<=P.hz;t++){
+      var f=t<=P.plat?1:Math.pow(1-P.decl/100,t-P.plat);
+      var oP=P.y1o*f,gP=P.y1g*f;
+      if(cumO+oP>P.oilr)oP=Math.max(0,P.oilr-cumO);
+      if(cumG+gP>P.gasr)gP=Math.max(0,P.gasr-cumG);
+      cumO+=oP;cumG+=gP;
+      var po=P.deck==='sec'?P.oil:(t>=P.glide?P.ltoil:P.oil+(P.ltoil-P.oil)*(t/P.glide));
+      var pg=P.deck==='sec'?P.gas:(t>=P.glide?P.ltgas:P.gas+(P.ltgas-P.gas)*(t/P.glide));
+      var rev=oP*(po*P.liq/100)+gP*Math.max(0,pg-P.basis);
+      var pc=(oP+gP/6)*P.opex, txx=rev*P.tax/100;
+      var dvv=t<=P.devy?P.devc*(1-(t-1)/P.devy):0;
+      PV+=(rev-pc-txx-dvv)/Math.pow(1.1,t);R+=rev;PC+=pc;TX+=txx;DV+=dvv;
+    }
+    return {R:R,PC:PC,TX:TX,DV:DV,undisc:R-PC-TX-DV,PV:PV};
+  }
+
+  function readParams(){
+    return {oilr:v('i_oilr'),gasr:v('i_gasr'),y1o:v('i_y1o'),y1g:v('i_y1g'),
+      plat:v('i_plat'),decl:v('i_decl'),hz:v('i_hz'),opex:v('i_opex'),tax:v('i_tax'),
+      devc:v('i_devc'),devy:v('i_devy'),liq:v('i_liq'),basis:v('i_basis'),
+      ltoil:v('i_ltoil'),ltgas:v('i_ltgas'),glide:v('i_glide'),
+      oil:v('s_oil'),gas:v('s_gas'),deck:deck};
+  }
+
+  function calibrate(){
+    var p=PRE[co], target=p.hist[p.hist.length-1];
+    var P=readParams(); P.deck='sec'; P.oil=p.oil; P.gas=p.gas;
+    var pv0=dcf(Object.assign({},P,{opex:0})).PV;
+    var status,opex;
+    if(pv0<target){ opex=0; status='below'; }
+    else { var lo=0,hi=100; for(var i=0;i<60;i++){var m=(lo+hi)/2; if(dcf(Object.assign({},P,{opex:m})).PV>target) lo=m; else hi=m;} opex=(lo+hi)/2; status='ok'; }
+    $('i_opex').value=Math.round(opex*100)/100;
+    return {opex:opex,status:status,target:target,floor:pv0};
+  }
+
+  function applyPreset(){
+    var p=PRE[co];
+    $('s_oil').value=p.oil; $('s_gas').value=p.gas;
+    $('i_oilr').value=p.oilr; $('i_gasr').value=p.gasr; $('i_y1o').value=p.y1o; $('i_y1g').value=p.y1g;
+    $('i_plat').value=p.plat; $('i_decl').value=p.decl; $('i_hz').value=p.hz;
+    $('i_tax').value=p.tax; $('i_devc').value=p.devc; $('i_devy').value=p.devy;
+    $('i_liq').value=p.liq; $('i_basis').value=p.basis; $('i_ltoil').value=p.ltoil; $('i_ltgas').value=p.ltgas; $('i_glide').value=p.glide;
+    $('i_sec').value=p.sec; $('i_2l').value=p.l2; $('i_uns').value=p.uns;
+    var target=p.hist[p.hist.length-1];
+    $('c_last').textContent=usd(target);
+    $('c_lastsub').textContent='YE2025 reported ('+p.secPrices+')';
+    $('datacap').textContent='Showing '+p.label.replace(/ —.*/,'')+'. Reserve, PV-10 and debt figures from the FY2025 10-K.';
+    var c=calibrate();
+    if(c.status==='below'){
+      $('calnote').innerHTML='<span style="color:var(--bad)">Note: at $0 cash cost the model tops out at '+usd(c.floor)+'MM, below the reported '+usd(c.target)+'MM — production shape or differentials need adjustment for this name.</span>';
+    } else {
+      $('calnote').innerHTML='Implied cash cost auto-calibrated to <b>$'+(Math.round(c.opex*100)/100).toFixed(2)+'/boe</b> so the SEC-deck forecast ties to the reported PV-10 of '+usd(c.target)+'MM. Adjust any input below to stress it.';
+    }
+    $('srcfoot').innerHTML='Source: '+p.src+'<br><br>PV-10 here is pre-tax (no future income taxes — the right basis for recovery work, not the full SEC standardized measure). The forecast is a plateau-then-decline DCF at a 10% discount rate, reserve-capped; the implied cash cost is solved so the SEC-deck forecast equals the reported PV-10. Strip deck glides the front-month slider to the long-term price over N years.';
+  }
+
+  function model(){
+    var P=readParams();
+    var r=dcf(P);
+    r.sec=v('i_sec'); r.l2=v('i_2l'); r.uns=v('i_uns'); r.ltoil=P.ltoil; r.ltgas=P.ltgas; r.oil=P.oil; r.gas=P.gas;
+    r.p=PRE[co];
+    return r;
+  }
+
+  var walk,wf;
+  function drawWalk(m){
+    var debt=basis==='sec'?m.sec:basis==='2l'?(m.sec+m.l2):(m.sec+m.l2+m.uns);
+    var dlabel=basis==='sec'?'Secured':basis==='2l'?'Secured + 2L':'Total debt';
+    var labels=m.p.years.concat(['26E']);
+    var data=m.p.hist.concat([m.PV]);
+    var cols=m.p.hist.map(function(){return css('--bluelt')}); cols.push(css('--blue'));
+    var line={id:'dl',afterDatasetsDraw:function(c){
+      var y=c.scales.y.getPixelForValue(debt),a=c.chartArea,x=c.ctx;
+      x.save();x.strokeStyle=css('--red');x.lineWidth=1.5;x.setLineDash([6,4]);
+      x.beginPath();x.moveTo(a.left,y);x.lineTo(a.right,y);x.stroke();x.setLineDash([]);
+      x.fillStyle=css('--red');x.font='11px '+css('--font');x.textAlign='left';
+      x.fillText(dlabel+' '+usd(debt),a.left+4,y-5);x.restore();}};
+    var ds={labels:labels,datasets:[{data:data,backgroundColor:cols,borderRadius:4,maxBarThickness:70}]};
+    var opt={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return usd(c.parsed.y)+' MM'}}}},
+      scales:{y:{beginAtZero:true,grid:{color:css('--border')},ticks:{color:css('--text-3'),callback:function(x){return bil(x)}}},x:{grid:{display:false},ticks:{color:css('--text-3')}}}};
+    if(walk){walk.data=ds;walk.update();return;}
+    walk=new Chart($('walk_chart'),{type:'bar',data:ds,plugins:[line],options:opt});
+  }
+
+  function drawWF(m){
+    var R=m.R,s1=R-m.PC,s2=s1-m.TX,s3=s2-m.DV,U=m.undisc,PV=m.PV;
+    var labels=['Revenue','Prod costs','Taxes','Dev capex','Undisc. CF','10% disc.','PV-10'];
+    var bars=[[0,R],[s1,R],[s2,s1],[s3,s2],[0,U],[PV,U],[0,PV]];
+    var cols=[css('--green'),css('--red'),css('--red'),css('--red'),css('--gray'),css('--amber'),css('--blue')];
+    var ds={labels:labels,datasets:[{data:bars,backgroundColor:cols,borderRadius:3,maxBarThickness:58}]};
+    var opt={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){var b=c.raw;return usd(Math.abs(b[1]-b[0]))+' MM'}}}},
+      scales:{y:{beginAtZero:true,grid:{color:css('--border')},ticks:{color:css('--text-3'),callback:function(x){return bil(x)}}},x:{grid:{display:false},ticks:{color:css('--text-3'),maxRotation:40,minRotation:0,autoSkip:false,font:{size:11}}}}};
+    if(wf){wf.data=ds;wf.update();return;}
+    wf=new Chart($('wf_chart'),{type:'bar',data:ds,options:opt});
+  }
+
+  function recover(m){
+    var sec=m.sec,l2=m.l2,uns=m.uns,tot=sec+l2+uns,cov,sub,lab,note;
+    if(basis==='sec'){cov=sec>0?m.PV/sec:Infinity;lab='PV-10 / secured';sub='1st-lien coverage';
+      note='Secured = PV-10 ('+usd(m.PV)+'MM) ÷ secured / revolver ('+usd(sec)+'MM). Above 1.0x the reserve value covers the first-lien claim before any haircut.';}
+    else if(basis==='2l'){var r2=m.PV-sec;cov=l2>0?r2/l2:Infinity;lab='Residual / 2nd lien';sub='value after secured';
+      note='2nd lien = (PV-10 − secured) ÷ 2nd lien = ('+usd(m.PV)+' − '+usd(sec)+') ÷ '+usd(l2)+'MM.'+(l2===0?' No 2nd-lien debt in this structure.':'');}
+    else if(basis==='uns'){var ru=m.PV-sec-l2;cov=uns>0?ru/uns:Infinity;lab='Residual / unsecured';sub='after secured + 2L';
+      note='Unsecured = (PV-10 − secured − 2nd lien) ÷ unsecured = ('+usd(m.PV)+' − '+usd(sec+l2)+') ÷ '+usd(uns)+'MM. The residual reserve value attributable to senior unsecured after the lien tranches.';}
+    else {cov=tot>0?m.PV/tot:Infinity;lab='PV-10 / total debt';sub='blended cushion';
+      note='Total = PV-10 ('+usd(m.PV)+'MM) ÷ total debt ('+usd(tot)+'MM). A blended asset-value cushion across the whole capital structure.';}
+    $('c_dlab').textContent=lab;
+    $('c_cov').textContent=cov===Infinity?'n/a':(Math.round(cov*100)/100).toFixed(2)+'x';
+    $('c_cov').style.color=cov>=1?'var(--good)':'var(--bad)';
+    $('c_covsub').textContent=sub+(cov===Infinity?'':' ('+Math.round(cov*100)+'%)');
+    $('pv_note').textContent=note;
+  }
+
+  function update(){
+    var m=model();
+    $('o_oil').textContent=px(m.oil);$('o_gas').textContent=px(m.gas);
+    if(deck==='sec'){$('o_oild').textContent='flat';$('o_gasd').textContent='flat';$('deck_lbl').textContent='SEC deck — flat benchmark held across all forecast years';}
+    else{$('o_oild').textContent='→ '+px(m.ltoil)+' LT';$('o_gasd').textContent='→ '+px(m.ltgas)+' LT';$('deck_lbl').textContent='Strip deck — front month glides to long-term price';}
+    $('c_new').textContent=usd(m.PV);
+    var last=m.p.hist[m.p.hist.length-1],chg=last?(m.PV/last-1)*100:0;
+    $('c_chg').textContent=(chg>=0?'+':'')+Math.round(chg)+'% vs reported';
+    $('c_chg').style.color=chg>=0?'var(--good)':'var(--bad)';
+    drawWalk(m);drawWF(m);recover(m);
+  }
+
+  function setBasis(b){basis=b;
+    $('b_sec').setAttribute('aria-pressed',b==='sec');$('b_2l').setAttribute('aria-pressed',b==='2l');
+    $('b_uns').setAttribute('aria-pressed',b==='uns');$('b_tot').setAttribute('aria-pressed',b==='tot');update();}
+
+  var sel=$('co');
+  ORDER.forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=PRE[k].label;sel.appendChild(o);});
+  sel.value=co;
+  sel.addEventListener('change',function(){co=this.value;applyPreset();update();});
+  $('dk').addEventListener('change',function(){deck=this.value;update();});
+  $('b_sec').addEventListener('click',function(){setBasis('sec')});
+  $('b_2l').addEventListener('click',function(){setBasis('2l')});
+  $('b_uns').addEventListener('click',function(){setBasis('uns')});
+  $('b_tot').addEventListener('click',function(){setBasis('tot')});
+  ['s_oil','s_gas','i_oilr','i_gasr','i_y1o','i_y1g','i_plat','i_decl','i_hz','i_opex','i_tax','i_devc','i_devy','i_liq','i_basis','i_ltoil','i_ltgas','i_glide','i_sec','i_2l','i_uns']
+    .forEach(function(id){$(id).addEventListener('input',update)});
+
+  applyPreset();update();
+})();
+</script>
+</body>
+</html>
